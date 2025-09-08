@@ -1,4 +1,14 @@
 
+"""
+EigenPlaces训练脚本
+
+该脚本实现了EigenPlaces的训练过程，主要特点：
+1. 使用多个数据组（groups），每组包含不同视角的图像
+2. 每个epoch轮换使用不同的数据组进行训练
+3. 使用CosFace损失函数增强特征的判别性
+4. 支持混合精度训练以提高效率
+"""
+
 import sys
 import torch
 import logging
@@ -18,52 +28,71 @@ from eigenplaces_model import eigenplaces_network
 from datasets.test_dataset import TestDataset
 from datasets.eigenplaces_dataset import EigenPlacesDataset
 
-torch.backends.cudnn.benchmark = True  # Provides a speedup
+torch.backends.cudnn.benchmark = True  # 启用cudnn优化以提升训练速度
 
+# 解析命令行参数和初始化
 args = parser.parse_arguments()
 start_time = datetime.now()
 output_folder = f"logs/{args.save_dir}/{start_time.strftime('%Y-%m-%d_%H-%M-%S')}"
-commons.make_deterministic(args.seed)
-commons.setup_logging(output_folder, console="debug")
+commons.make_deterministic(args.seed)           # 设置随机种子确保可重复性
+commons.setup_logging(output_folder, console="debug")  # 设置日志
 logging.info(" ".join(sys.argv))
 logging.info(f"Arguments: {args}")
 logging.info(f"The outputs are being saved in {output_folder}")
 
-#### Model
+#### 模型初始化
+# 创建EigenPlaces网络模型
 model = eigenplaces_network.GeoLocalizationNet_(args.backbone, args.fc_output_dim)
 
 logging.info(f"There are {torch.cuda.device_count()} GPUs and {multiprocessing.cpu_count()} CPUs.")
 
+# 如果指定了预训练模型路径，则加载模型权重
 if args.resume_model is not None:
     logging.debug(f"Loading model from {args.resume_model}")
     model_state_dict = torch.load(args.resume_model)
     model.load_state_dict(model_state_dict)
 
+# 将模型移动到指定设备并设置为训练模式
 model = model.to(args.device).train()
 
-#### Optimizer
+#### 优化器和损失函数
+# 使用交叉熵损失函数（与CosFace分类器配合使用）
 criterion = torch.nn.CrossEntropyLoss()
+# 使用Adam优化器优化模型参数
 model_optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-#### Datasets
+#### 数据集和分类器初始化
+# 创建多个数据组，每组包含不同视角（0度和90度）的图像
+# EigenPlaces的核心思想：使用多视角数据增强模型的视角鲁棒性
 groups = [EigenPlacesDataset(
         args.train_dataset_folder, M=args.M, N=args.N, focal_dist=args.focal_dist,
-        current_group=n//2, min_images_per_class=args.min_images_per_class, 
-        angle=[0, 90][n % 2], visualize_classes=args.visualize_classes)
-    for n in range(args.groups_num * 2)
+        current_group=n//2,                    # 数据组编号
+        min_images_per_class=args.min_images_per_class, 
+        angle=[0, 90][n % 2],                  # 交替使用0度和90度视角
+        visualize_classes=args.visualize_classes)
+    for n in range(args.groups_num * 2)  # 每个组有两个视角，所以总数是groups_num * 2
 ]
-# Each group has its own classifier, which depends on the number of classes in the group
+
+# 为每个数据组创建独立的CosFace分类器
+# 每个分类器的输出类别数等于对应数据组中的类别数
 classifiers = [cosface_loss.MarginCosineProduct(
     args.fc_output_dim, len(group), s=args.s, m=args.m) for group in groups]
+
+# 为每个分类器创建独立的优化器
 classifiers_optimizers = [torch.optim.Adam(classifier.parameters(), lr=args.classifiers_lr) for classifier in classifiers]
 
+# GPU数据增强管道
+# 在GPU上进行数据增强以提高效率
 gpu_augmentation = tfm.Compose([
+    # 设备无关的颜色抖动，增加模型对光照变化的鲁棒性
     augmentations.DeviceAgnosticColorJitter(brightness=args.brightness,
                                             contrast=args.contrast,
                                             saturation=args.saturation,
                                             hue=args.hue),
+    # 随机裁剪和缩放，增加模型对尺度变化的鲁棒性
     augmentations.DeviceAgnosticRandomResizedCrop([512, 512],
                                                   scale=[1-args.random_resized_crop, 1]),
+    # ImageNet标准化
     tfm.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
