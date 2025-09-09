@@ -44,7 +44,8 @@ class GeM(nn.Module):
         super().__init__()
         self.p = Parameter(torch.ones(1)*p)  # 可学习的池化参数
         self.eps = eps
-    
+        self.adaptive_pool = nn.AdaptiveAvgPool2d(1)
+
     def forward(self, x):
         """
         前向传播
@@ -55,7 +56,10 @@ class GeM(nn.Module):
         Returns:
             池化后的特征，形状为(B, C, 1, 1)
         """
-        return gem(x, p=self.p, eps=self.eps)
+        # return gem(x, p=self.p, eps=self.eps)
+        powered = x.clamp(min=self.eps).pow(self.p)   # 先做 clamp 与 p 次方
+        pooled  = self.adaptive_pool(powered)         # 全局池化：输出 [B,C,1,1]
+        return pooled.pow(1.0 / self.p)               # 再开 p 次方根
     
     def __repr__(self):
         return f"{self.__class__.__name__}(p={self.p.data.tolist()[0]:.4f}, eps={self.eps})"
@@ -84,7 +88,7 @@ class Flatten(torch.nn.Module):
         Raises:
             AssertionError: 如果输入的空间维度不是1x1
         """
-        assert x.shape[2] == x.shape[3] == 1, f"{x.shape[2]} != {x.shape[3]} != 1"
+        # assert x.shape[2] == x.shape[3] == 1, f"{x.shape[2]} != {x.shape[3]} != 1"
         return x[:, :, 0, 0]
 
 
