@@ -8,5 +8,7 @@ models/*
 tensorrt_cpp/build/*
 .clangd*
 build/*
-tensorrt_cpp/*
+tensorrt_cpp/build/*
+tensorrt_cpp/.cache*
+compile_commands.json
 
