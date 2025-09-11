@@ -24,7 +24,6 @@ def gem(x, p=torch.ones(1)*3, eps: float = 1e-6):
     """
     return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1./p)
 
-
 class GeM(nn.Module):
     """
     广义平均池化层（Generalized Mean Pooling Layer）
@@ -64,7 +63,6 @@ class GeM(nn.Module):
     def __repr__(self):
         return f"{self.__class__.__name__}(p={self.p.data.tolist()[0]:.4f}, eps={self.eps})"
 
-
 class Flatten(torch.nn.Module):
     """
     展平层
@@ -90,7 +88,6 @@ class Flatten(torch.nn.Module):
         """
         # assert x.shape[2] == x.shape[3] == 1, f"{x.shape[2]} != {x.shape[3]} != 1"
         return x[:, :, 0, 0]
-
 
 class L2Norm(nn.Module):
     """
@@ -121,3 +118,83 @@ class L2Norm(nn.Module):
             L2归一化后的张量，与输入形状相同但每个向量的L2范数为1
         """
         return F.normalize(x, p=2.0, dim=self.dim)
+
+class DLAUltraCompatibleL2Norm(nn.Module):
+    """
+    DLA超级兼容的L2归一化实现
+    完全避免Sqrt算子，使用Pow(0.5)或Reciprocal+Pow(-0.5)替代
+    """
+    def __init__(self, channels, eps=1e-12, use_reciprocal=True):
+        super().__init__()
+        self.eps = eps
+        self.use_reciprocal = use_reciprocal
+        
+        # 预定义1x1卷积层实现通道求和
+        self.channel_sum = nn.Conv2d(channels, 1, kernel_size=1, bias=False)
+        with torch.no_grad():
+            self.channel_sum.weight.fill_(1.0)  # 权重设为全1
+    
+    def forward(self, x):
+        # x shape: (B, C, H, W)
+        x_squared = x * x  # (B, C, H, W)
+        norm_squared = self.channel_sum(x_squared) + self.eps  # (B, 1, H, W)
+        
+        if self.use_reciprocal:
+            # 方法1: 使用 x / sqrt(norm_squared) = x * (1/sqrt(norm_squared)) = x * pow(norm_squared, -0.5)
+            inv_norm = torch.pow(norm_squared, -0.5)  # (B, 1, H, W)
+            return x * inv_norm  # 广播乘法
+        else:
+            # 方法2: 使用 pow(norm_squared, 0.5) 然后除法
+            norm = torch.pow(norm_squared, 0.5)  # 等价于sqrt，但用Pow算子
+            return x / norm
+
+class NoSqrtManualL2Norm(nn.Module):
+    """
+    不使用Sqrt算子的手动L2归一化实现
+    专门用于描述符归一化
+    """
+    def __init__(self, feature_dim, eps=1e-12, use_reciprocal=True):
+        super().__init__()
+        self.feature_dim = feature_dim
+        self.eps = eps
+        self.use_reciprocal = use_reciprocal
+        
+        # 预定义求和权重
+        self.register_buffer('sum_weights', torch.ones(feature_dim, 1))
+    
+    def forward(self, x):
+        # x shape: (B, C)
+        assert x.size(1) == self.feature_dim, f"Expected {self.feature_dim} features, got {x.size(1)}"
+        
+        x_squared = x * x  # (B, C)
+        norm_squared = torch.mm(x_squared, self.sum_weights).squeeze(-1)  # (B,)
+        norm_squared = norm_squared + self.eps  # (B,)
+        
+        if self.use_reciprocal:
+            # 方法1: x / sqrt(norm_squared) = x * pow(norm_squared, -0.5)
+            inv_norm = torch.pow(norm_squared.unsqueeze(-1), -0.5)  # (B, 1)
+            return x * inv_norm  # 广播乘法
+        else:
+            # 方法2: 使用pow(0.5)替代sqrt
+            norm = torch.pow(norm_squared.unsqueeze(-1), 0.5)  # (B, 1)
+            return x / norm
+class SimpleL2Norm(nn.Module):
+    """
+    最简单的L2归一化实现，专门用于特征图
+    使用预定义的1x1卷积避免ReduceSum算子
+    """
+    def __init__(self, channels, eps=1e-12):
+        super().__init__()
+        self.eps = eps
+        
+        # 预定义1x1卷积层实现通道求和
+        self.channel_sum = nn.Conv2d(channels, 1, kernel_size=1, bias=False)
+        with torch.no_grad():
+            self.channel_sum.weight.fill_(1.0)  # 权重设为全1
+    
+    def forward(self, x):
+        # x shape: (B, C, H, W)
+        x_squared = x * x  # (B, C, H, W)
+        norm_squared = self.channel_sum(x_squared) + self.eps  # (B, 1, H, W)
+        norm = torch.sqrt(norm_squared)  # (B, 1, H, W)
+        return x / norm  # 广播除法

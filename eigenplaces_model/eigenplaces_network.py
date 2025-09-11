@@ -5,7 +5,7 @@ import torchvision
 from torch import nn
 from typing import Tuple
 
-from eigenplaces_model.layers import Flatten, L2Norm, GeM
+from eigenplaces_model.layers import Flatten, L2Norm, GeM, DLAUltraCompatibleL2Norm, NoSqrtManualL2Norm
 
 # 各种骨干网络最后一个卷积层的通道数（在平均池化之前）
 # 这些信息用于确定全连接层的输入维度
@@ -48,6 +48,45 @@ class GeoLocalizationNet_(nn.Module):
             Flatten(),                                   # 展平为1D向量
             nn.Linear(features_dim, fc_output_dim),      # 全连接层，输出指定维度的描述符
             L2Norm()                                     # 对最终描述符进行L2归一化
+        )
+    
+    def forward(self, x):
+        """
+        前向传播
+        
+        Args:
+            x: 输入图像张量，形状为(B, C, H, W)
+            
+        Returns:
+            描述符向量，形状为(B, fc_output_dim)，已进行L2归一化
+        """
+        x = self.backbone(x)     # 通过骨干网络提取特征
+        x = self.aggregation(x)  # 通过聚合层生成最终描述符
+        return x
+
+class NoSqrtDLACompatibleGeoLocalizationNet(nn.Module):
+    """
+    完全无Sqrt算子的DLA兼容EigenPlaces网络
+    
+    专门为DLA部署优化，避免使用所有不支持的算子：
+    - 无ReduceL2算子
+    - 无ReduceSum算子  
+    - 无Sqrt算子 (使用Pow(-0.5)替代)
+    """
+    def __init__(self, backbone: str, fc_output_dim: int, use_reciprocal: bool = True):
+        super().__init__()
+        assert backbone in CHANNELS_NUM_IN_LAST_CONV, f"backbone must be one of {list(CHANNELS_NUM_IN_LAST_CONV.keys())}"
+        
+        # 获取预训练的骨干网络和特征维度
+        self.backbone, features_dim = _get_backbone(backbone)
+        
+        # 构建完全DLA兼容的聚合层
+        self.aggregation = nn.Sequential(
+            DLAUltraCompatibleL2Norm(features_dim, use_reciprocal=use_reciprocal),  # 无Sqrt的特征图L2归一化
+            GeM(),                                                                  # 广义平均池化
+            Flatten(),                                                              # 展平为1D向量
+            nn.Linear(features_dim, fc_output_dim),                                 # 全连接层
+            NoSqrtManualL2Norm(fc_output_dim, use_reciprocal=use_reciprocal)        # 无Sqrt的描述符L2归一化
         )
     
     def forward(self, x):
@@ -139,4 +178,60 @@ def _get_backbone(backbone_name : str) -> Tuple[torch.nn.Module, int]:
     features_dim = CHANNELS_NUM_IN_LAST_CONV[backbone_name]
     
     return backbone, features_dim
+
+
+def convert_to_no_sqrt_dla_compatible(pretrained_model: GeoLocalizationNet_, use_reciprocal: bool = True) -> NoSqrtDLACompatibleGeoLocalizationNet:
+    """
+    将预训练的GeoLocalizationNet_转换为完全无Sqrt算子的DLA兼容版本
+    
+    Args:
+        pretrained_model: 预训练的原始模型
+        use_reciprocal: 是否使用倒数方法 (pow(-0.5)) 而非 pow(0.5)
+        
+    Returns:
+        完全无Sqrt算子的DLA兼容模型，权重已复制
+    """
+    # 获取原始模型的配置信息
+    backbone_name = None
+    fc_output_dim = None
+    
+    # 从模型结构推断配置
+    for name, module in pretrained_model.named_modules():
+        if isinstance(module, nn.Linear) and 'aggregation' in name:
+            fc_output_dim = module.out_features
+            break
+    
+    # 推断backbone类型
+    features_dim = module.in_features
+    for backbone, dim in CHANNELS_NUM_IN_LAST_CONV.items():
+        if dim == features_dim:
+            backbone_name = backbone
+            break
+    
+    if backbone_name is None or fc_output_dim is None:
+        raise ValueError("无法从预训练模型推断网络配置")
+    
+    print(f"检测到模型配置: backbone={backbone_name}, fc_output_dim={fc_output_dim}")
+    print(f"使用{'倒数方法 (pow(-0.5))' if use_reciprocal else 'pow(0.5)方法'}")
+    
+    # 创建无Sqrt DLA兼容模型
+    no_sqrt_model = NoSqrtDLACompatibleGeoLocalizationNet(backbone_name, fc_output_dim, use_reciprocal)
+    
+    # 复制权重
+    pretrained_dict = pretrained_model.state_dict()
+    no_sqrt_dict = no_sqrt_model.state_dict()
+    
+    # 复制匹配的权重
+    matched_keys = []
+    for key in no_sqrt_dict.keys():
+        if key in pretrained_dict and no_sqrt_dict[key].shape == pretrained_dict[key].shape:
+            no_sqrt_dict[key] = pretrained_dict[key]
+            matched_keys.append(key)
+    
+    # 新参数已在构造函数中正确初始化
+    print(f"成功复制 {len(matched_keys)} 个权重参数")
+    print("DLAUltraCompatibleL2Norm和NoSqrtManualL2Norm的权重已初始化为全1向量")
+    
+    no_sqrt_model.load_state_dict(no_sqrt_dict)
+    return no_sqrt_model
 

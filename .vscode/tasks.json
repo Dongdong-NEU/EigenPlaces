@@ -1,0 +1,71 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build TensorRT C++",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "cd tensorrt_cpp && chmod +x build.sh && ./build.sh"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Clean TensorRT Build",
+            "type": "shell", 
+            "command": "bash",
+            "args": [
+                "-c",
+                "cd tensorrt_cpp && rm -rf build && mkdir -p build"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Run TensorRT Test",
+            "type": "shell",
+            "command": "bash", 
+            "args": [
+                "-c",
+                "cd tensorrt_cpp && chmod +x run_test.sh && ./run_test.sh"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "Build TensorRT C++"
+        }
+    ]
+}

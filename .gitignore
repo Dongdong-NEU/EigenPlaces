@@ -5,4 +5,8 @@ logs
 cache
 jobs
 models/*
+tensorrt_cpp/build/*
+.clangd*
+build/*
+tensorrt_cpp/*
 

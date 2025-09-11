@@ -1,0 +1,52 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug EigenPlaces TensorRT",
+            "type": "cppdbg",
+            "request": "launch",
+            // /home/xihuidong/Documents/workspace/EigenPlaces/tensorrt_cpp/build/EigenPlaces_TensorRT
+            "program": "${workspaceFolder}/tensorrt_cpp/build/EigenPlaces_TensorRT",
+            "args": [
+                "${workspaceFolder}/models/eigenplaces_resnet50_onnx_fixheightwidth_simplified.onnx",
+                "${workspaceFolder}/test_map.png", 
+                "${workspaceFolder}/test_query.png",
+                "${workspaceFolder}/models/eigenplaces_model.engine"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "/usr/local/cuda/lib64:/usr/local/TensorRT/lib:${env:LD_LIBRARY_PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            // "preLaunchTask": "Build TensorRT C++",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "logging": {
+                "moduleLoad": false,
+                "trace": false,
+                "engineLogging": false,
+                "programOutput": true,
+                "exceptions": true
+            }
+        }
+    ]
+}

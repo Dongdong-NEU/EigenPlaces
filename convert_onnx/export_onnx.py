@@ -27,6 +27,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import commons
 from eigenplaces_model import eigenplaces_network
+from eigenplaces_model.eigenplaces_network import  convert_to_no_sqrt_dla_compatible
 
 def parse_arguments():
     """解析命令行参数"""
@@ -71,6 +72,13 @@ def parse_arguments():
     parser.add_argument("--device", type=str, default="cuda",
                        help="Device for model inference")
     
+    # 完全DLA兼容选项 (无Sqrt算子)
+    parser.add_argument("--no_sqrt", action="store_true",
+                       help="Convert model to completely DLA compatible version (avoids ReduceSum/ReduceL2/Sqrt operators)")
+    
+    parser.add_argument("--use_reciprocal", action="store_true", default=True,
+                       help="Use reciprocal method (pow(-0.5)) instead of pow(0.5) for sqrt replacement")
+    
     return parser.parse_args()
 
 def load_model(args):
@@ -101,6 +109,13 @@ def load_model(args):
             model_state_dict = checkpoint
             
         model.load_state_dict(model_state_dict)
+    
+    # 如果需要DLA兼容，转换模型
+    if args.no_sqrt:
+        logging.info("Converting model to completely DLA compatible version (no Sqrt)...")
+        model = convert_to_no_sqrt_dla_compatible(model, use_reciprocal=args.use_reciprocal)
+        logging.info("No-Sqrt model conversion completed")
+
     
     return model
 

@@ -1,0 +1,25 @@
+{
+    "cmake.sourceDirectory": "/home/xihuidong/Documents/workspace/EigenPlaces/tensorrt_cpp",
+     // 指定 clangd 可执行文件路径（你下载的预编译版 clangd 16.0.2）
+    "clangd.path": "/opt/clangd_16.0.2/bin/clangd",
+
+    // 关闭微软 C/C++ 扩展的增强着色，避免与 clangd 的语义高亮冲突
+    "C_Cpp.enhancedColorization": "Disabled",
+
+    // 禁用微软 C/C++ 扩展的 IntelliSense，只使用 clangd 提供的补全与诊断
+    "C_Cpp.intelliSenseEngine": "disabled",
+
+    // 启动 clangd 时的参数
+    "clangd.arguments": [
+        "--background-index",             // 后台建立全项目索引，加快跳转和补全
+        "--all-scopes-completion",        // 提供所有作用域的补全（不仅是当前作用域）
+        "--completion-style=detailed",    // 使用详细的补全信息（显示类型、参数等）
+        "--query-driver=/usr/bin/g++,/usr/bin/clang++" // 指定可用的编译器路径，让 clangd 正确解析系统头文件
+    ],
+
+    // 指定 CMake 生成的 compile_commands.json 位置，clangd 会用它获取编译参数
+    "clangd.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+
+    // 是否开启语义高亮（变量、函数、类型用不同颜色）
+    "editor.semanticHighlighting.enabled": true
+}
