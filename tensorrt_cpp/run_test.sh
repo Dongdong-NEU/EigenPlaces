@@ -19,8 +19,8 @@ if [ ! -f "$EXECUTABLE" ]; then
 fi
 
 # 设置模型和图像路径
-ONNX_MODEL="../models/eigenplaces_resnet50_onnx_dla_compatible_simplified.onnx"
-ENGINE_FILE="../models/eigenplaces_resnet50_dla_compatible_simplified.engine"
+ONNX_MODEL="../models/eigenplaces_resnet50_onnx_no_sqrt_simplified.onnx"
+ENGINE_FILE="../models/eigenplaces_resnet50_onnx_no_sqrt_simplified.onnx"
 
 # ONNX_MODEL="../models/eigenplaces_resnet50_onnx_fixheightwidth_simplified.onnx"
 # ENGINE_FILE="../models/eigenplaces_resnet50_fixheightwidth_simplified.engine"

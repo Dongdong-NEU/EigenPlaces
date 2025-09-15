@@ -12,3 +12,4 @@ tensorrt_cpp/build/*
 tensorrt_cpp/.cache*
 compile_commands.json
 
+.cache/*

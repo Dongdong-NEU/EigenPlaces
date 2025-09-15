@@ -9,8 +9,7 @@ python convert_onnx/export_onnx.py \
 --resume_model torchhub \
 --simplify \
 --verify \
---output_path models/eigenplaces_resnet50_onnx_fixheightwidth.onnx
+--output_path models/eigenplaces_resnet50_fixedshape_GPU.onnx
 
 # --no_sqrt \
-
 # --dynamic_axes \

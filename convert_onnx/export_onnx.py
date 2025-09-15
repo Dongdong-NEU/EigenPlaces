@@ -1,15 +1,3 @@
-"""
-EigenPlaces模型ONNX导出脚本
-
-该脚本用于将训练好的EigenPlaces模型导出为ONNX格式,便于在不同平台和框架中部署。
-
-使用方法:
-python export_onnx.py --backbone ResNet50 --fc_output_dim 2048 --resume_model path/to/model.pth --output_path model.onnx
-
-或者导出torch.hub预训练模型:
-python export_onnx.py --backbone ResNet50 --fc_output_dim 2048 --resume_model torchhub --output_path models/eigenplaces_resnet50_onnx_torchhub.onnx
-"""
-
 import os
 import torch
 import logging

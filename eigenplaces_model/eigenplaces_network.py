@@ -51,28 +51,12 @@ class GeoLocalizationNet_(nn.Module):
         )
     
     def forward(self, x):
-        """
-        前向传播
-        
-        Args:
-            x: 输入图像张量，形状为(B, C, H, W)
-            
-        Returns:
-            描述符向量，形状为(B, fc_output_dim)，已进行L2归一化
-        """
         x = self.backbone(x)     # 通过骨干网络提取特征
         x = self.aggregation(x)  # 通过聚合层生成最终描述符
         return x
 
 class NoSqrtDLACompatibleGeoLocalizationNet(nn.Module):
-    """
-    完全无Sqrt算子的DLA兼容EigenPlaces网络
-    
-    专门为DLA部署优化，避免使用所有不支持的算子：
-    - 无ReduceL2算子
-    - 无ReduceSum算子  
-    - 无Sqrt算子 (使用Pow(-0.5)替代)
-    """
+
     def __init__(self, backbone: str, fc_output_dim: int, use_reciprocal: bool = True):
         super().__init__()
         assert backbone in CHANNELS_NUM_IN_LAST_CONV, f"backbone must be one of {list(CHANNELS_NUM_IN_LAST_CONV.keys())}"
@@ -90,15 +74,7 @@ class NoSqrtDLACompatibleGeoLocalizationNet(nn.Module):
         )
     
     def forward(self, x):
-        """
-        前向传播
-        
-        Args:
-            x: 输入图像张量，形状为(B, C, H, W)
-            
-        Returns:
-            描述符向量，形状为(B, fc_output_dim)，已进行L2归一化
-        """
+
         x = self.backbone(x)     # 通过骨干网络提取特征
         x = self.aggregation(x)  # 通过聚合层生成最终描述符
         return x
@@ -181,16 +157,7 @@ def _get_backbone(backbone_name : str) -> Tuple[torch.nn.Module, int]:
 
 
 def convert_to_no_sqrt_dla_compatible(pretrained_model: GeoLocalizationNet_, use_reciprocal: bool = True) -> NoSqrtDLACompatibleGeoLocalizationNet:
-    """
-    将预训练的GeoLocalizationNet_转换为完全无Sqrt算子的DLA兼容版本
-    
-    Args:
-        pretrained_model: 预训练的原始模型
-        use_reciprocal: 是否使用倒数方法 (pow(-0.5)) 而非 pow(0.5)
-        
-    Returns:
-        完全无Sqrt算子的DLA兼容模型，权重已复制
-    """
+
     # 获取原始模型的配置信息
     backbone_name = None
     fc_output_dim = None
