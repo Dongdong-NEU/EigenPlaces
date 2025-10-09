@@ -7,34 +7,20 @@ from typing import Tuple
 
 from eigenplaces_model.layers import Flatten, L2Norm, GeM, DLAUltraCompatibleL2Norm, NoSqrtManualL2Norm
 
-# 各种骨干网络最后一个卷积层的通道数（在平均池化之前）
-# 这些信息用于确定全连接层的输入维度
+
 CHANNELS_NUM_IN_LAST_CONV = {
-    "ResNet18": 512,     # ResNet18最后卷积层输出512个通道
-    "ResNet50": 2048,    # ResNet50最后卷积层输出2048个通道  
-    "ResNet101": 2048,   # ResNet101最后卷积层输出2048个通道
-    "ResNet152": 2048,   # ResNet152最后卷积层输出2048个通道
-    "VGG16": 512,        # VGG16最后卷积层输出512个通道
+    "ResNet18": 512,
+    "ResNet50": 2048,
+    "ResNet101": 2048,
+    "ResNet152": 2048,
+    "VGG16": 512,
 }
 
 
 class GeoLocalizationNet_(nn.Module):
-    """
-    EigenPlaces地理定位网络主类
-    
-    该网络用于视觉地点识别任务，将输入图像编码为固定维度的描述符向量。
-    网络由两部分组成：
-    1. 骨干网络（backbone）：提取图像特征
-    2. 聚合层（aggregation）：将特征聚合为最终的描述符
-    """
+
     def __init__(self, backbone : str, fc_output_dim : int):
-        """
-        初始化地理定位网络
-        
-        Args:
-            backbone (str): 使用的torchvision骨干网络名称，必须是VGG16或ResNet系列
-            fc_output_dim (int): 最后全连接层的输出维度，等价于描述符的维度
-        """
+
         super().__init__()
         assert backbone in CHANNELS_NUM_IN_LAST_CONV, f"backbone must be one of {list(CHANNELS_NUM_IN_LAST_CONV.keys())}"
         
@@ -43,16 +29,16 @@ class GeoLocalizationNet_(nn.Module):
         
         # 构建聚合层：L2归一化 -> GeM池化 -> 展平 -> 全连接 -> L2归一化
         self.aggregation = nn.Sequential(
-            L2Norm(),                                    # 对特征图进行L2归一化
-            GeM(),                                       # 广义平均池化（Generalized Mean Pooling）
-            Flatten(),                                   # 展平为1D向量
-            nn.Linear(features_dim, fc_output_dim),      # 全连接层，输出指定维度的描述符
-            L2Norm()                                     # 对最终描述符进行L2归一化
+            L2Norm(),                                    
+            GeM(),                                     
+            Flatten(),                                   
+            nn.Linear(features_dim, fc_output_dim),      
+            L2Norm()                                     
         )
     
     def forward(self, x):
-        x = self.backbone(x)     # 通过骨干网络提取特征
-        x = self.aggregation(x)  # 通过聚合层生成最终描述符
+        x = self.backbone(x)    
+        x = self.aggregation(x)
         return x
 
 class NoSqrtDLACompatibleGeoLocalizationNet(nn.Module):
@@ -66,17 +52,17 @@ class NoSqrtDLACompatibleGeoLocalizationNet(nn.Module):
         
         # 构建完全DLA兼容的聚合层
         self.aggregation = nn.Sequential(
-            DLAUltraCompatibleL2Norm(features_dim, use_reciprocal=use_reciprocal),  # 无Sqrt的特征图L2归一化
-            GeM(),                                                                  # 广义平均池化
-            Flatten(),                                                              # 展平为1D向量
-            nn.Linear(features_dim, fc_output_dim),                                 # 全连接层
-            NoSqrtManualL2Norm(fc_output_dim, use_reciprocal=use_reciprocal)        # 无Sqrt的描述符L2归一化
+            DLAUltraCompatibleL2Norm(features_dim, use_reciprocal=use_reciprocal), 
+            GeM(),                                                                  
+            Flatten(),                                                              
+            nn.Linear(features_dim, fc_output_dim),                               
+            NoSqrtManualL2Norm(fc_output_dim, use_reciprocal=use_reciprocal)        
         )
     
     def forward(self, x):
 
-        x = self.backbone(x)     # 通过骨干网络提取特征
-        x = self.aggregation(x)  # 通过聚合层生成最终描述符
+        x = self.backbone(x)   
+        x = self.aggregation(x) 
         return x
 
 

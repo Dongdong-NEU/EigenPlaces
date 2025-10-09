@@ -6,42 +6,15 @@ from torch.nn.parameter import Parameter
 
 
 def gem(x, p=torch.ones(1)*3, eps: float = 1e-6):
-    """
-    广义平均池化(Generalized Mean Pooling)函数
-    
-    GeM池化是一种可学习的池化方法,通过参数p控制池化的性质：
-    - p=1: 算术平均池化
-    - p=∞: 最大池化
-    - p=3: 介于两者之间,常用于图像检索任务
-    
-    Args:
-        x: 输入特征图,形状为(B, C, H, W)
-        p: 池化参数,控制池化的激进程度
-        eps: 防止除零的小常数
-        
-    Returns:
-        池化后的特征,形状为(B, C, 1, 1)
-    """
+
     return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1./p)
 
 class GeM(nn.Module):
-    """
-    广义平均池化层(Generalized Mean Pooling Layer)
-    
-    这是一个可学习的全局池化层,特别适用于图像检索任务。
-    与传统的全局平均池化相比,GeM通过可学习参数p来调整池化的特性,
-    能够更好地关注图像中的重要特征。
-    """
+
     def __init__(self, p=3, eps=1e-6):
-        """
-        初始化GeM层
-        
-        Args:
-            p (float): 初始池化参数,默认为3
-            eps (float): 防止数值不稳定的小常数
-        """
+
         super().__init__()
-        self.p = Parameter(torch.ones(1)*p)  # 可学习的池化参数
+        self.p = Parameter(torch.ones(1)*p)  
         self.eps = eps
         self.adaptive_pool = nn.AdaptiveAvgPool2d(1)
 
@@ -49,14 +22,17 @@ class GeM(nn.Module):
         # 原始版本
         # return gem(x, p=self.p, eps=self.eps)
 
-        # 针对有clamp的版本（GPU）
-        powered = x.clamp(min=self.eps).pow(self.p)   # 先做 clamp 与 p 次方
+        p_val = float(self.p.detach().clamp_min(1e-6))
+        print(f"p_val: {p_val}")
+
+        # 针对有clamp的版本（GPU）, 在trace的时候pow中的参数中不能有动态参数
+        powered = x.clamp(min=self.eps).pow(p_val)  
 
         # 针对无clamp的版本（DLA）
         # powered = torch.max(x, torch.tensor(self.eps, device=x.device, dtype=x.dtype)).pow(self.p)
 
-        pooled  = self.adaptive_pool(powered)         # 全局池化：输出 [B,C,1,1]
-        return pooled.pow(1.0 / self.p)               # 再开 p 次方根
+        pooled  = self.adaptive_pool(powered)        
+        return pooled.pow(1.0 / p_val)          
     
     def __repr__(self):
         return f"{self.__class__.__name__}(p={self.p.data.tolist()[0]:.4f}, eps={self.eps})"
@@ -72,6 +48,7 @@ class Flatten(torch.nn.Module):
         # DLA版本
         # return x.permute(2,3,0,1)
         # return x.view(x.size(0), -1)
+
         # 原始版本（GPU）
         return x[:, :, 0, 0]
 
@@ -110,7 +87,7 @@ class DLAUltraCompatibleL2Norm(nn.Module):
         x_squared = x * x  # (B, C, H, W)
         norm_squared = self.channel_sum(x_squared) + self.eps  # (B, 1, H, W)
 
-        norm = self.newton_sqrt(norm_squared)  # 等价于sqrt,但用Pow算子
+        norm = self.newton_sqrt(norm_squared)
         return x / norm
 class NoSqrtManualL2Norm(nn.Module):
 
@@ -150,3 +127,5 @@ class NoSqrtManualL2Norm(nn.Module):
             # return x / norm
         norm = self.newton_sqrt(norm_squared)  # 使用牛顿迭代法代替torch.sqrt
         return x / norm
+        # norm = self.newton_sqrt(norm_squared)  # 使用牛顿迭代法代替torch.sqrt (B,)
+        # return x / norm.unsqueeze(-1)  # (B, C) / (B, 1) -> (B, C)
