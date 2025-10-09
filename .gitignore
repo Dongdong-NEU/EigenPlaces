@@ -13,3 +13,7 @@ tensorrt_cpp/.cache*
 compile_commands.json
 
 .cache/*
+
+
+trace_model/*.log
+trace_model/results/*
