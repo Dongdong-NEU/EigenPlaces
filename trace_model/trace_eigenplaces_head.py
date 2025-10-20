@@ -3,6 +3,7 @@ import os
 import sys
 import argparse
 import logging
+import drinfer
 from datetime import datetime
 from pmodel.runner.tracer import BaseTracer
 
@@ -47,6 +48,10 @@ def parse_arguments():
     
     parser.add_argument("--use_reciprocal", action="store_true", default=True,
                        help="Use reciprocal method (pow(-0.5)) instead of pow(0.5) for sqrt replacement")
+        
+    parser.add_argument("--input_format", type=str, default="BCHW",
+                       choices=["BCHW", "BHWC"],
+                       help="Input tensor format: BCHW (default) or BHWC")
     
     return parser.parse_args()
 
@@ -200,8 +205,11 @@ def main():
         tracer.trace(
             trace_data=(head_input_tensor,), 
             trace_dir=args.trace_dir, 
-            model_name=args.model_name
-        )
+            model_name=args.model_name,
+            runtime_dtype="half",
+            trace_runtime_dtype=drinfer.MODEL_DATA_TYPE.MODEL_HALF,
+            input_layouts={"input_data_0": "NHWC"}
+            )
         
         logging.info(f"\n 成功完成Head trace! ")
         logging.info(f"结果保存在: {args.trace_dir}")

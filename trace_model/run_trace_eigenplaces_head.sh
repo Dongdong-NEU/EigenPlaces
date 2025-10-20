@@ -7,10 +7,11 @@
 BACKBONE="ResNet50"
 FC_OUTPUT_DIM=2048
 FEATURE_SIZE="16 16"  # backbone输出的特征图大小
-BATCH_SIZE=1
+BATCH_SIZE=2
 DEVICE="cpu"
 TRACE_DIR="./results"
-MODEL_NAME="eigenplaces_head_traced"
+MODEL_NAME="visual_place_recognition_head"
+INPUT_FORMAT="BHWC"  # 输入格式：BCHW或BHWC
 
 # 检查是否提供了模型路径参数
 if [ $# -eq 0 ]; then
@@ -31,11 +32,14 @@ if [ $# -eq 0 ]; then
     echo "  --trace_dir DIR            输出目录 (默认: ./results)"
     echo "  --model_name NAME          模型名称 (默认: eigenplaces_head_traced)"
     echo "  --no_sqrt                  使用DLA兼容版本(无Sqrt算子)"
+    echo "  --input_format FORMAT      输入格式 BCHW或BHWC (默认: BCHW)"
     echo ""
     echo "说明:"
     echo "  此脚本只trace EigenPlaces的head部分 (aggregation层)"
     echo "  Head包含: L2Norm -> GeM -> Flatten -> Linear -> L2Norm"
-    echo "  输入: backbone输出的特征图 (B, C, H, W)"
+    echo "  输入: backbone输出的特征图"
+    echo "    - BCHW格式: (B, C, H, W)"
+    echo "    - BHWC格式: (B, H, W, C)"
     echo "  输出: 描述符向量 (B, fc_output_dim)"
     exit 1
 fi
@@ -55,6 +59,7 @@ echo "批大小: $BATCH_SIZE"
 echo "设备: $DEVICE"
 echo "输出目录: $TRACE_DIR"
 echo "模型名称: $MODEL_NAME"
+echo "输入格式: $INPUT_FORMAT"
 echo "=========================================="
 
 echo "开始trace Head模块..."
@@ -67,6 +72,7 @@ python trace_eigenplaces_head.py \
     --device "$DEVICE" \
     --trace_dir "$TRACE_DIR" \
     --model_name "$MODEL_NAME" \
+    --input_format "$INPUT_FORMAT" \
     "$@"
 
 # 检查执行结果

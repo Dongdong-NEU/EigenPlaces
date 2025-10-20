@@ -7,10 +7,11 @@
 BACKBONE="ResNet50"
 FC_OUTPUT_DIM=2048
 INPUT_SIZE="512 512"
-BATCH_SIZE=1
+BATCH_SIZE=2
 DEVICE="cuda"
 TRACE_DIR="./results"
-MODEL_NAME="eigenplaces_traced"
+MODEL_NAME="visual_place_recognition"
+INPUT_FORMAT="BHWC"  # 输入格式：BCHW或BHWC
 
 # 检查是否提供了模型路径参数
 if [ $# -eq 0 ]; then
@@ -59,4 +60,5 @@ python trace_eigenplaces.py \
     --batch_size "$BATCH_SIZE" \
     --device "$DEVICE" \
     --trace_dir "$TRACE_DIR" \
-    --model_name "$MODEL_NAME"
+    --model_name "$MODEL_NAME" \
+    --input_format "$INPUT_FORMAT"

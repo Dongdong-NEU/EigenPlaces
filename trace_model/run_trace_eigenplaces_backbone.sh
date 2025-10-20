@@ -7,10 +7,11 @@
 BACKBONE="ResNet50"
 FC_OUTPUT_DIM=2048
 INPUT_SIZE="512 512"
-BATCH_SIZE=1
+BATCH_SIZE=2
 DEVICE="cuda"
 TRACE_DIR="./results"
-MODEL_NAME="eigenplaces_backbone_traced"
+MODEL_NAME="visual_place_recognition_backbone"
+INPUT_FORMAT="BHWC"  # 输入格式：BCHW或BHWC
 
 # 检查是否提供了模型路径参数
 if [ $# -eq 0 ]; then
@@ -26,8 +27,9 @@ if [ $# -eq 0 ]; then
     echo "  --fc_output_dim DIM        输出维度 (默认: 2048)"
     echo "  --input_size H W           输入尺寸 (默认: 512 512)"
     echo "  --batch_size SIZE          批大小 (默认: 1)"
-    echo "  --device DEVICE            设备 (默认: cpu)"
+    echo "  --device DEVICE            设备 (默认: cuda)"
     echo "  --trace_dir DIR            输出目录 (默认: ./results)"
+    echo "  --input_format FORMAT      输入格式 BCHW或BHWC (默认: BCHW)"
     exit 1
 fi
 
@@ -46,6 +48,7 @@ echo "批大小: $BATCH_SIZE"
 echo "设备: $DEVICE"
 echo "输出目录: $TRACE_DIR"
 echo "模型名称: $MODEL_NAME"
+echo "输入格式: $INPUT_FORMAT"
 echo "=========================================="
 
 echo "开始trace模型..."
@@ -57,4 +60,5 @@ python trace_eigenplaces_backbone.py \
     --batch_size "$BATCH_SIZE" \
     --device "$DEVICE" \
     --trace_dir "$TRACE_DIR" \
-    --model_name "$MODEL_NAME"
+    --model_name "$MODEL_NAME" \
+    --input_format "$INPUT_FORMAT"

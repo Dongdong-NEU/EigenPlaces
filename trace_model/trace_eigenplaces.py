@@ -3,6 +3,7 @@ import os
 import sys
 import argparse
 import logging
+import drinfer
 from datetime import datetime
 from pmodel.runner.tracer import BaseTracer
 
@@ -58,6 +59,10 @@ def parse_arguments():
     parser.add_argument("--use_reciprocal", action="store_true", default=True,
                        help="Use reciprocal method (pow(-0.5)) instead of pow(0.5) for sqrt replacement")
     
+    parser.add_argument("--input_format", type=str, default="BCHW",
+                       choices=["BCHW", "BHWC"],
+                       help="Input tensor format: BCHW (default) or BHWC")
+    
     return parser.parse_args()
 
 def load_model(args):
@@ -100,14 +105,24 @@ def load_model(args):
 class EigenPlacesModel(torch.nn.Module):
     """
     EigenPlaces模型的包装类 用于trace
-    由于BaseTracer需要nn.Module 所以需要将模型包装一下
+    支持BHWC和BCHW格式输入
     """
-    def __init__(self, model):
+    def __init__(self, model, input_format='BCHW'):
         super().__init__()
         self.model = model
+        self.input_format = input_format.upper()
+        assert self.input_format in ['BCHW', 'BHWC'], "input_format must be 'BCHW' or 'BHWC'"
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
+        # 如果输入是BHWC格式，转换为BCHW格式
+        if self.input_format == 'BHWC':
+            # BHWC (B, H, W, C) -> BCHW (B, C, H, W)
+            x = x.permute(0, 3, 1, 2)
+        
+        # 模型处理
+        output = self.model(x)
+        
+        return output
 
 def main():
 
@@ -135,31 +150,51 @@ def main():
         model.eval()  # 设置为评估模式
         
         # 包装模型
-        # wrapped_model = EigenPlacesModel(model)
+        wrapped_model = EigenPlacesModel(model, input_format=args.input_format)
+        wrapped_model.to(device)
+        wrapped_model.eval()
         
-        # 创建输入数据
-        logging.info(f"创建输入数据: batch_size={args.batch_size}, size={args.input_size}")
-        input_tensor = torch.randn(args.batch_size, 3, args.input_size[0], args.input_size[1], device=device)
+        # 创建输入数据 - 根据输入格式创建对应的tensor
+        logging.info(f"创建输入数据: batch_size={args.batch_size}, size={args.input_size}, format={args.input_format}")
+        if args.input_format == 'BHWC':
+            # BHWC格式: (batch, height, width, channels)
+            input_tensor = torch.randn(args.batch_size, args.input_size[0], args.input_size[1], 3, device=device)
+        else:
+            # BCHW格式: (batch, channels, height, width)
+            input_tensor = torch.randn(args.batch_size, 3, args.input_size[0], args.input_size[1], device=device)
+        
+        logging.info(f"输入tensor形状: {input_tensor.shape}")
         
         # 测试模型前向传播
         logging.info("测试模型前向传播...")
         with torch.no_grad():
-            output = model(input_tensor)
+            output = wrapped_model(input_tensor)
             logging.info(f"模型输出形状: {output.shape}")
             logging.info(f"模型输出类型: {output.dtype}")
         
         # 创建tracer并执行trace
         logging.info("开始trace模型...")
-        tracer = BaseTracer(model)
+        tracer = BaseTracer(wrapped_model)
         
         # 确保trace目录存在
         os.makedirs(args.trace_dir, exist_ok=True)
         
         # 执行trace
+        # tracer.trace(
+        #     trace_data=(input_tensor,), 
+        #     trace_dir=args.trace_dir, 
+        #     model_name=args.model_name,
+        #     runtime_dtype="float",           # 可改为 "half"
+        #     trace_runtime_dtype="float" ,    # 与上保持一致
+        #     input_layouts={"input_data_0": "NHWC"}  # 你的输入是BHWC/NHWC
+        # )
         tracer.trace(
-            trace_data=(input_tensor,), 
-            trace_dir=args.trace_dir, 
-            model_name=args.model_name
+        trace_data=(input_tensor,),
+        trace_dir=args.trace_dir,
+        model_name=args.model_name,
+        runtime_dtype="half",
+        trace_runtime_dtype=drinfer.MODEL_DATA_TYPE.MODEL_HALF,
+        input_layouts={"input_data_0": "NHWC"}
         )
         
         logging.info(f"成功完成模型trace！结果保存在: {args.trace_dir}")
