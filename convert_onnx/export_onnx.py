@@ -67,6 +67,10 @@ def parse_arguments():
     parser.add_argument("--use_reciprocal", action="store_true", default=True,
                        help="Use reciprocal method (pow(-0.5)) instead of pow(0.5) for sqrt replacement")
     
+    # BHWC输入格式支持
+    parser.add_argument("--bhwc_input", action="store_true",
+                       help="Export model with BHWC input format instead of BCHW")
+    
     return parser.parse_args()
 
 def load_model(args):
@@ -107,35 +111,83 @@ def load_model(args):
     
     return model
 
+class ModelWithBHWCInput(torch.nn.Module):
+    """
+    包装模型以支持BHWC输入格式
+    
+    该包装类在模型前添加一个transpose操作，将BHWC格式的输入转换为BCHW格式，
+    然后再送入原始模型进行推理。这样可以在不修改原模型结构的情况下，
+    支持BHWC格式的输入数据。
+    
+    Args:
+        model: 原始的PyTorch模型（期望BCHW输入）
+    """
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+    
+    def forward(self, x):
+        """
+        前向传播
+        
+        Args:
+            x: 输入张量，格式为BHWC (batch, height, width, channels)
+            
+        Returns:
+            模型输出（通常是描述符向量）
+        """
+        # 将BHWC转换为BCHW: (B, H, W, C) -> (B, C, H, W)
+        x = x.permute(0, 3, 1, 2)
+        # 调用原始模型
+        return self.model(x)
+
 def export_to_onnx(model, args):
     """
     导出模型为ONNX格式
-    把一个已经在 eval() 模式下的 PyTorch 模型,用一个“假输入”（dummy input）跑一遍前向,并把得到的静态计算图 + 权重导出成 .onnx 文件。
+    把一个已经在 eval() 模式下的 PyTorch 模型,用一个"假输入"（dummy input）跑一遍前向,并把得到的静态计算图 + 权重导出成 .onnx 文件。
+    
+    Returns:
+        model: 导出使用的模型（如果使用bhwc_input，则返回包装后的模型）
     """
+    # 如果需要BHWC输入格式，包装模型
+    if args.bhwc_input:
+        logging.info("Wrapping model to support BHWC input format")
+        model = ModelWithBHWCInput(model)
+    
     # 切到推理模式（冻结 BN 统计、关闭 Dropout 等）。导出 ONNX 前必须做，保证导出的行为与推理一致
     model.eval()
     
-    # dummy_input：一个“假输入”，只用于跟踪模型的前向，构建图用。
-    # 形状是 [batch, C=3, H, W]：
-    # args.batch_size：导出时用的批大小（仅作样例；不是固定，除非你没设置动态轴）。
-    # 3：RGB 三通道。
-    # args.input_size：通常是 (H, W)（确认你的代码里是否是这个顺序）。
-    # 注意dummy的位置要和model的位置在同一个位置上
-
+    # dummy_input：一个"假输入"，只用于跟踪模型的前向，构建图用。
+    # 根据是否使用BHWC格式创建不同形状的输入
     device = next(model.parameters()).device
     dtype  = next(model.parameters()).dtype
-    dummy_input = torch.randn(args.batch_size, 3, args.input_size[0], args.input_size[1], device=device, dtype=dtype)
     
-    # 设置动态轴，dynamic_axes：告诉 ONNX 哪些维度是可变的（“动态形状”）
+    if args.bhwc_input:
+        # BHWC格式: [batch, height, width, channels]
+        dummy_input = torch.randn(args.batch_size, args.input_size[0], args.input_size[1], 3, device=device, dtype=dtype)
+        logging.info(f"Using BHWC input format: {dummy_input.shape}")
+    else:
+        # BCHW格式: [batch, channels, height, width]
+        dummy_input = torch.randn(args.batch_size, 3, args.input_size[0], args.input_size[1], device=device, dtype=dtype)
+        logging.info(f"Using BCHW input format: {dummy_input.shape}")
+    
+    # 设置动态轴，dynamic_axes：告诉 ONNX 哪些维度是可变的（"动态形状"）
     dynamic_axes = None
     if args.dynamic_axes:
-        dynamic_axes = {
-        #  输入可变维度，0: batch_size, 2: height, 3: width
-        'input': {0: 'batch_size', 2: 'height', 3: 'width'},
-        # 'input': {0: 'batch_size'},
-        # 输出可变维度，0: batch_size
-        'output': {0: 'batch_size'}
-    }
+        if args.bhwc_input:
+            # BHWC格式: 输入形状为 [batch, height, width, channels]
+            # 可变维度: 0: batch_size, 1: height, 2: width
+            dynamic_axes = {
+                'input': {0: 'batch_size', 1: 'height', 2: 'width'},
+                'output': {0: 'batch_size'}
+            }
+        else:
+            # BCHW格式: 输入形状为 [batch, channels, height, width]
+            # 可变维度: 0: batch_size, 2: height, 3: width
+            dynamic_axes = {
+                'input': {0: 'batch_size', 2: 'height', 3: 'width'},
+                'output': {0: 'batch_size'}
+            }
     
     # 导出ONNX
     logging.info(f"Exporting model to {args.output_path}")
@@ -160,6 +212,9 @@ def export_to_onnx(model, args):
     # 获取文件大小
     file_size = os.path.getsize(args.output_path) / (1024 * 1024)  # MB
     logging.info(f"ONNX model size: {file_size:.2f} MB")
+    
+    # 返回用于导出的模型（可能已被包装）
+    return model
 
 def simplify_onnx(onnx_path):
     """使用onnx-simplifier简化ONNX模型"""
@@ -194,7 +249,11 @@ def simplify_onnx(onnx_path):
         logging.warning("onnx-simplifier not installed. Install with: pip install onnx-simplifier")
 
 def verify_onnx_model(pytorch_model, onnx_path, args):
-    """验证ONNX模型输出与PyTorch模型是否一致"""
+    """验证ONNX模型输出与PyTorch模型是否一致
+    
+    注意：pytorch_model在导出时可能已经被ModelWithBHWCInput包装过，
+    因此这里需要使用相同格式的输入进行验证
+    """
     try:
         import onnxruntime as ort
         import numpy as np
@@ -202,7 +261,14 @@ def verify_onnx_model(pytorch_model, onnx_path, args):
         logging.info("Verifying ONNX model...")
         
         # 创建测试输入
-        test_input = torch.randn(args.batch_size, 3, args.input_size[0], args.input_size[1])
+        # 注意：无论是否使用bhwc_input，这里的test_input格式都应该与
+        # pytorch_model期望的输入格式一致（即ONNX模型的输入格式）
+        if args.bhwc_input:
+            # BHWC格式：pytorch_model已经是ModelWithBHWCInput包装后的模型
+            test_input = torch.randn(args.batch_size, args.input_size[0], args.input_size[1], 3)
+        else:
+            # BCHW格式：pytorch_model是原始模型
+            test_input = torch.randn(args.batch_size, 3, args.input_size[0], args.input_size[1])
         
         # PyTorch推理
         pytorch_model.eval()
@@ -248,16 +314,18 @@ def main():
         # 移动到CPU进行导出（ONNX导出通常在CPU上进行）
         model = model.cpu()
         
-        # 导出ONNX
-        export_to_onnx(model, args)
+        # 导出ONNX（返回可能被包装过的模型）
+        exported_model = export_to_onnx(model, args)
         
         # 简化模型（可选）
         if args.simplify:
             simplify_onnx(args.output_path)
         
         # 验证模型（可选）
+        # 注意：这里使用exported_model而不是model，因为如果启用了bhwc_input，
+        # exported_model是被ModelWithBHWCInput包装过的模型
         if args.verify:
-            verify_onnx_model(model, args.output_path, args)
+            verify_onnx_model(exported_model, args.output_path, args)
             
         logging.info("ONNX export completed successfully!")
         
