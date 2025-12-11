@@ -99,6 +99,11 @@ def load_model(args):
                 model_state_dict = checkpoint
         else:
             model_state_dict = checkpoint
+        
+        # # 处理键名前缀问题：如果所有键都有 "model." 前缀，则移除它
+        # if all(k.startswith('model.') for k in model_state_dict.keys()):
+        #     logging.info("Detected 'model.' prefix in state_dict keys, removing it...")
+        #     model_state_dict = {k.replace('model.', '', 1): v for k, v in model_state_dict.items()}
             
         model.load_state_dict(model_state_dict)
     

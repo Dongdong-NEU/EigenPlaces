@@ -7,12 +7,13 @@ python convert_onnx/export_onnx.py \
 --backbone ResNet50 \
 --fc_output_dim 2048 \
 --resume_model /home/xihuidong/Documents/workspace/EigenPlaces/models/eigenplaces_resnet50_2048.pth \
---batch_size 2 \
 --bhwc_input \
---input_size 480 640 \
 --simplify \
 --verify \
---output_path models/eigenplaces_resnet50_fixedshape_480_640_GPU.onnx
+--batch_size 2 \
+--input_size 180 480 \
+--output_path models/eigenplaces_resnet50_fixedshape_180_480.onnx
 
 # --no_sqrt \
 # --dynamic_axes \
+# --resume_model  /home/xihuidong/.cache/torch/hub/checkpoints/eigenplaces_ResNet50_2048_GB1_BAI_5_10.pth \

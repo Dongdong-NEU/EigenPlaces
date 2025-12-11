@@ -6,7 +6,7 @@
 # 设置默认参数
 BACKBONE="ResNet50"
 FC_OUTPUT_DIM=2048
-FEATURE_SIZE="16 16"  # backbone输出的特征图大小
+FEATURE_SIZE="6 15"  # backbone输出的特征图大小
 BATCH_SIZE=2
 DEVICE="cpu"
 TRACE_DIR="./results"
